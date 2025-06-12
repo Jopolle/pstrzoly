@@ -16,6 +16,7 @@ zajebiste kurwa ten bedzie robione na arduino i podobnych essasito
   * obsługa DHT11
   * obsługa tenso
   * nadawanie RF
+* Obudowa dokończyć kontrukcje i uszczelnić
 
 
 ## Propozycje Funkcji guzików
