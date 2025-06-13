@@ -47,7 +47,7 @@ RH_ASK rf_driver;
 
 
 int elapsed_time = 0;
-
+const int LOOP_COUNT = 2;
 
 bool weight_temp_flag = true;
 
@@ -61,7 +61,7 @@ enum {
   TRIGGER_RX,
   SCALE_TARE
 };
-int STATE = NONE;
+int STATE = TOGGLE_SCREEN;
 
 
 void setup() {
@@ -113,16 +113,17 @@ void loop() {
     last_mass = rounded_mass;
 
     //Pomiar temperatury
-    int h1 = dht1.readHumidity();
-    int t1 = dht1.readTemperature();
-    int h2 = dht2.readHumidity();
-    int t2 = dht2.readTemperature();
+    delay(2000);
+    float h1 = dht1.readHumidity();
+    float t1 = dht1.readTemperature();
+    float h2 = dht2.readHumidity();
+    float t2 = dht2.readTemperature();
 
 
 
 
   unsigned long now = millis();
-
+  STATE = NONE;
   if (now - lastDisp > DEBOUNCE) {
     if (digitalRead(DISP_PIN) == LOW) {
       STATE = TOGGLE_BACKLIGHT;
@@ -155,7 +156,7 @@ void loop() {
 
 
 
-
+  
     switch (STATE) {
     case TOGGLE_BACKLIGHT:
       Serial.println("Toggle backlight");
@@ -163,6 +164,7 @@ void loop() {
       backlightOn = !backlightOn;
       backlightOn ? lcd.backlight() : lcd.noBacklight();
       lcd.clear();
+      STATE = TOGGLE_SCREEN;
       break;
     case TOGGLE_SCREEN:
       Serial.println("Toggle Screen");
@@ -188,9 +190,15 @@ void loop() {
         weight_temp_flag = !weight_temp_flag;
       break;
     case TRIGGER_RX:
-      Serial.println("Trigger RX");
-      // tu daj kod do tary
-      break;
+        Serial.println("Trigger RX");
+        // 
+        elapsed_time = LOOP_COUNT;
+        lcd.clear();
+        lcd.print("Zerowanie...");
+        delay(3000);
+        lcd.clear();
+        STATE = TOGGLE_SCREEN;
+        break;
     case SCALE_TARE:
         Serial.println("Tare");
         // tu daj kod wyzwalający odczyt DHT11
@@ -199,16 +207,36 @@ void loop() {
         lcd.print("Zerowanie...");
         delay(3000);
         lcd.clear();
+        STATE = TOGGLE_SCREEN;
         break;
     default:
       // nic do zrobienia
       break;
   }
 
-STATE = NONE;
+
+elapsed_time++;
+
+  if(elapsed_time > LOOP_COUNT)
+  {
+    // upewniamy się, że mamy aktualne wartości z DHT (może od poprzedniego naciśnięcia)
+    h1 = isnan(h1) ? dht1.readHumidity() : h1;
+    t1 = isnan(t1) ? dht1.readTemperature() : t1;
+    h2 = isnan(h2) ? dht2.readHumidity() : h2;
+    t2 = isnan(t2) ? dht2.readTemperature() : t2;
 
 
 
+    String msg = "" + String(mass, 3) + "kg " + String(t1, 1)
+           + "C " + String(h1, 1) + "% " + String(t2, 1)
+           + "C " + String(h2, 1) + "%";
+
+  rf_driver.send((uint8_t*)msg.c_str(), msg.length());
+  rf_driver.waitPacketSent();
+    // debug
+    Serial.print("RF-> "); Serial.print(msg); Serial.print("   "); Serial.println(h1);
+    elapsed_time = 0;
+  }
 
   // 3) SAVE: pokaz jednorazowo masę
   
@@ -292,18 +320,3 @@ STATE = NONE;
 
 
 
-void update_display(int screen){
-
-  lcd.clear();
-  lcd.setCursor(0,0);
-  switch(screen){
-
-
-
-
-  }
-
-
-
-
-}
