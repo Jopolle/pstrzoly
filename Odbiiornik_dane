@@ -1,0 +1,43 @@
+#include <RH_ASK.h>
+#include <SPI.h> // Not actually used but needed to compile
+
+RH_ASK driver;
+
+void setup()
+{
+    Serial.begin(9600);	// Debugging only
+    if (!driver.init())
+         Serial.println("init failed");
+}
+
+void loop()
+{
+    // wydłużamy bufor do 64 bajtów
+    constexpr uint8_t MAXLEN = 64;
+    uint8_t buf[MAXLEN];
+    uint8_t buflen = MAXLEN;
+
+    if (driver.recv(buf, &buflen)) // Non-blocking
+    {
+      // upewniamy się, że mamy string zakończony NULL-em
+      if (buflen < MAXLEN) buf[buflen] = '\0';
+      else                buf[MAXLEN-1] = '\0';
+
+      Serial.print("Odebrano: ");
+      Serial.println((char*)buf);
+
+      // jeśli chcesz wydobyć liczby, możesz użyć sscanf:
+      float mass, t1,h1,t2,h2;
+      int parsed = sscanf((char*)buf,
+        "M:%fkg T1:%fC H1:%f%% T2:%fC H2:%f%%",
+        &mass, &t1, &h1, &t2, &h2
+      );
+      if (parsed == 5) {
+        Serial.print("-> masa = "); Serial.print(mass); Serial.println(" kg");
+        Serial.print("-> T1 = ");   Serial.print(t1);   Serial.println(" °C");
+        Serial.print("-> H1 = ");   Serial.print(h1);   Serial.println(" %");
+        Serial.print("-> T2 = ");   Serial.print(t2);   Serial.println(" °C");
+        Serial.print("-> H2 = ");   Serial.print(h2);   Serial.println(" %");
+      }
+    }
+}
