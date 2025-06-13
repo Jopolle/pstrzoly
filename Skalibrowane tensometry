@@ -1,0 +1,37 @@
+#include "HX711.h"
+
+HX711 scale;
+
+float last_mass = 0.0;
+const float CHANGE_THRESHOLD = 0.01;  // minimalna zmiana masy, która ma znaczenie
+
+void setup() {
+  Serial.begin(9600);
+  scale.begin(2, 3);               // DT, SCK
+  delay(3000);                     // stabilizacja
+
+  scale.set_scale(23600.0);       // <- Tego nie zmieniajcie to jest git
+  scale.tare();                    // zerowanie
+
+  Serial.println("Gotowy do pomiaru!");
+}
+
+void loop() {
+  float mass = scale.get_units(10);                    // uśrednienie
+  float rounded_mass = round(mass * 1000.0) / 1000.0;  // zaokrąglenie
+
+  if (rounded_mass < 0.0) {
+    rounded_mass = 0.0;
+  }
+
+  // Zmiana masy wieksza niz trigger
+  if (abs(rounded_mass - last_mass) >= CHANGE_THRESHOLD) {
+    Serial.print("Masa: ");
+    Serial.print(rounded_mass, 3);
+    Serial.println(" kg");
+
+    last_mass = rounded_mass;  // zaktualizuj ostatnią znaną masę
+  }
+
+  delay(1000);  // Tutaj co ile ma byc pomiar
+}
