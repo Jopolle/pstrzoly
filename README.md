@@ -31,3 +31,6 @@ zajebiste kurwa ten bedzie robione na arduino i podobnych essasito
 Bonus
 ------
 Scraping sieci z prognóz pogodowych do trenowania modelu predykcji plonów itd
+
+
+https://randomnerdtutorials.com/rf-433mhz-transmitter-receiver-module-with-arduino/
