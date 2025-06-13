@@ -4,16 +4,15 @@
 #include "DHT.h"
 #include <RH_ASK.h>
 #include <SPI.h> // dla kompilacji RH_ASK
-
 // ---------- Piny HX711 ----------
 const int DT_PIN     = 10;
 const int SCK_PIN    = 3;
 
 // ---------- Piny przycisków ----------
-const int DISP_PIN   = 7;  // toggle backlight
-const int SAVE_PIN   = 6;  // jednorazowy podgląd masy
-const int ZERO_PIN   = 4;  // tare
-const int THERMO_PIN = 5;  // trigger odczytu DHT11
+const int DISP_PIN   = 6;  // toggle backlight
+const int CHSC_PIN   = 5;  // jednorazowy podgląd masy
+const int ZERO_PIN   = 7;  // tare
+const int RX_PIN = 4;  // trigger odczytu DHT11
 
 // ---------- DHT11 (dwa czujniki) ----------
 #define DHTTYPE DHT11
@@ -45,68 +44,176 @@ const float CHANGE_THRESHOLD = 0.1;  // kg
 // ---------- ASK radio ----------
 RH_ASK rf_driver;
 
+
+
+int elapsed_time = 0;
+
+
+bool weight_temp_flag = true;
+
+
+
+
+enum {
+  NONE = 0,
+  TOGGLE_BACKLIGHT,
+  TOGGLE_SCREEN,
+  TRIGGER_RX,
+  SCALE_TARE
+};
+int STATE = NONE;
+
+
 void setup() {
-  // LCD
+  Serial.begin(9600);
+
+
+  if (!rf_driver.init()) {
+    Serial.println("RF init failed");
+  }
+  scale.begin(10, 3);               // DT, SCK
+  delay(3000);                     // stabilizacja
+
+  scale.set_scale(23600.0);       // <- Tego nie zmieniajcie to jest git
+  scale.tare();                    // zerowanie
+
   lcd.init();
   lcd.backlight();
   lcd.clear();
 
-  // Przyciski z pull-up
   pinMode(DISP_PIN,   INPUT_PULLUP);
-  pinMode(SAVE_PIN,   INPUT_PULLUP);
+  pinMode(CHSC_PIN,   INPUT_PULLUP);
   pinMode(ZERO_PIN,   INPUT_PULLUP);
-  pinMode(THERMO_PIN, INPUT_PULLUP);
+  pinMode(RX_PIN, INPUT_PULLUP);
 
-  // Serial
-  Serial.begin(9600);
-  while (!Serial);
 
-  // HX711
-  scale.begin(DT_PIN, SCK_PIN);
-  scale.set_scale(22500.0);
-  scale.tare();
-  Serial.println("Gotowy do pomiaru!");
-
-  // DHT11
   dht1.begin();
   dht2.begin();
 
-  // RF ASK
-  if (!rf_driver.init()) {
-    Serial.println("RF init failed");
-  }
+
+
+  Serial.println("Gotowy do pomiaru!");
+
+ 
+
 }
 
 void loop() {
-  // 1) Pomiar masy
-  float m = scale.get_units(10);
-  if (m < 0) m = 0;
-  float mass = round(m * 1000.0) / 1000.0;
-  if (abs(mass - last_mass) >= CHANGE_THRESHOLD) {
-    last_mass = mass;
-    Serial.print("Masa: "); Serial.print(mass,3); Serial.println(" kg");
-    if (backlightOn) {
-      lcd.clear();
-      lcd.print("Masa: ");
-      lcd.print(mass,3);
-      lcd.print(" kg");
+     // 1) Pomiar masy
+    float mass = scale.get_units(10);                    // uśrednienie
+    float rounded_mass = round(mass * 1000.0) / 1000.0;  // zaokrąglenie
+
+    if (rounded_mass < 0.0) {
+        rounded_mass = 0.0;
+    }
+    //Serial.print("Masa: ");
+    //Serial.print(rounded_mass, 3);
+    //Serial.println(" kg");
+
+    last_mass = rounded_mass;
+
+    //Pomiar temperatury
+    int h1 = dht1.readHumidity();
+    int t1 = dht1.readTemperature();
+    int h2 = dht2.readHumidity();
+    int t2 = dht2.readTemperature();
+
+
+
+
+  unsigned long now = millis();
+
+  if (now - lastDisp > DEBOUNCE) {
+    if (digitalRead(DISP_PIN) == LOW) {
+      STATE = TOGGLE_BACKLIGHT;
+      lastDisp = now;
+    }
+  }
+  // przycisk CHSC_PIN
+  if (now - lastSave > DEBOUNCE) {
+    if (digitalRead(CHSC_PIN) == LOW) {
+      STATE = TOGGLE_SCREEN;
+      lastSave = now;
+    }
+  }
+  // przycisk ZERO_PIN
+  if (now - lastZero > DEBOUNCE) {
+    if (digitalRead(ZERO_PIN) == LOW) {
+      STATE = TRIGGER_RX;
+      lastZero = now;
+    }
+  }
+  // przycisk RX_PIN
+  if (now - lastThermo > DEBOUNCE) {
+    if (digitalRead(RX_PIN) == LOW) {
+      STATE = SCALE_TARE;
+      lastThermo = now;
     }
   }
 
-  // 2) DISP: toggle podświetlenie
-  bool d = digitalRead(DISP_PIN);
-  if (d != dispLast && millis() - lastDisp > DEBOUNCE) {
-    lastDisp = millis();
-    if (d == LOW) {
+
+
+
+
+
+    switch (STATE) {
+    case TOGGLE_BACKLIGHT:
+      Serial.println("Toggle backlight");
+      // tu daj kod do przełączania podświetlenia
       backlightOn = !backlightOn;
       backlightOn ? lcd.backlight() : lcd.noBacklight();
       lcd.clear();
-    }
+      break;
+    case TOGGLE_SCREEN:
+      Serial.println("Toggle Screen");
+      // tu daj kod do jednorazowego podglądu masy
+        if(weight_temp_flag){
+            lcd.clear();
+            lcd.print("Masa: ");
+            lcd.print(mass,3);
+            lcd.print(" kg");
+        }
+        else{
+            lcd.clear();
+            if (isnan(t1)||isnan(h1)) lcd.print("Blad DHT1");
+            else {
+                lcd.print("T1:"); lcd.print(t1,1); lcd.print("C H1:"); lcd.print(h1,0); lcd.print("%");
+            }
+            lcd.setCursor(0,1);
+            if (isnan(t2)||isnan(h2)) lcd.print("Blad DHT2");
+            else {
+                lcd.print("T2:"); lcd.print(t2,1); lcd.print("C H2:"); lcd.print(h2,0); lcd.print("%");
+            }
+        }
+        weight_temp_flag = !weight_temp_flag;
+      break;
+    case TRIGGER_RX:
+      Serial.println("Trigger RX");
+      // tu daj kod do tary
+      break;
+    case SCALE_TARE:
+        Serial.println("Tare");
+        // tu daj kod wyzwalający odczyt DHT11
+        scale.tare();
+        lcd.clear();
+        lcd.print("Zerowanie...");
+        delay(3000);
+        lcd.clear();
+        break;
+    default:
+      // nic do zrobienia
+      break;
   }
-  dispLast = d;
+
+STATE = NONE;
+
+
+
 
   // 3) SAVE: pokaz jednorazowo masę
-  bool s = digitalRead(SAVE_PIN);
+  
+  /*
+  bool s = digitalRead(CHSC_PIN);
   if (s != saveLast && millis() - lastSave > DEBOUNCE) {
     lastSave = millis();
     if (s == LOW) {
@@ -133,7 +240,7 @@ void loop() {
   zeroLast = z;
 
   // 5) THERMO: odczyt dwóch DHT11
-  bool t = digitalRead(THERMO_PIN);
+  bool t = digitalRead(RX_PIN);
   float h1, t1, h2, t2;
   //if (t != thermoLast && millis() - lastThermo > DEBOUNCE) {
     lastThermo = millis();
@@ -144,8 +251,7 @@ void loop() {
       t1 = dht1.readTemperature();
       h2 = dht2.readHumidity();
       t2 = dht2.readTemperature();
-      lcd.clear();
-      lcd.setCursor(0,0);
+
       if (isnan(t1)||isnan(h1)) lcd.print("Blad DHT1");
       else {
         lcd.print("T1:"); lcd.print(t1,1); lcd.print("C H1:"); lcd.print(h1,0); lcd.print("%");
@@ -160,7 +266,7 @@ void loop() {
     //}
   //}
   thermoLast = t;
-
+  
   // 6) Wyślij wszystkie dane przez RF ASK
   {
     // upewniamy się, że mamy aktualne wartości z DHT (może od poprzedniego naciśnięcia)
@@ -171,7 +277,7 @@ void loop() {
 
 
 
-    String msg = "M:" + String(mass, 3) + "kg T1:" + String(t1, 1)
+    String msg = "Masa ula:  " + String(mass, 3) + "kg T1:" + String(t1, 1)
            + "C H1:" + String(h1, 1) + "% T2:" + String(t2, 1)
            + "C H2:" + String(h2, 1) + "%";
 
@@ -180,6 +286,24 @@ void loop() {
     // debug
     //Serial.print("RF-> "); Serial.print(msg); Serial.print("   "); Serial.println(h1); 
   }
+  */
+  delay(2000);
+}
 
-  delay(1000);
+
+
+void update_display(int screen){
+
+  lcd.clear();
+  lcd.setCursor(0,0);
+  switch(screen){
+
+
+
+
+  }
+
+
+
+
 }

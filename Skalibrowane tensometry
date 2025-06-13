@@ -1,5 +1,9 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 #include "HX711.h"
-
+#include "DHT.h"
+#include <RH_ASK.h>
+#include <SPI.h> // dla kompilacji RH_ASK
 HX711 scale;
 
 float last_mass = 0.0;
@@ -7,7 +11,7 @@ const float CHANGE_THRESHOLD = 0.01;  // minimalna zmiana masy, która ma znacze
 
 void setup() {
   Serial.begin(9600);
-  scale.begin(2, 3);               // DT, SCK
+  scale.begin(10, 3);               // DT, SCK
   delay(3000);                     // stabilizacja
 
   scale.set_scale(23600.0);       // <- Tego nie zmieniajcie to jest git
